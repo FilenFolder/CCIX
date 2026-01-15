@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Compressed Image to CCIT</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #222; color: #eee; text-align: center; padding: 20px; }
+  input, button, label { margin: 10px; padding: 10px; font-size: 16px; }
+  textarea { width: 90%; height: 300px; margin-top: 20px; font-family: monospace; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h1>Compressed Image to CCIT Converter</h1>
+
+<input type="file" id="imageInput" accept="image/*"><br>
+
+<label for="downscale">Downscale: <span id="scaleValue">0</span></label>
+<input type="range" id="downscale" min="0" max="5" value="0" step="1" onchange="updateScaleValue()"><br>
+
+<button onclick="convertImage()">Convert</button>
+
+<p id="resolutionText">Resolution: N/A</p>
+
+<textarea id="output" placeholder="Compressed CCIT code will appear here..."></textarea>
+
+<script>
+function updateScaleValue() {
+    document.getElementById('scaleValue').innerText =
+        document.getElementById('downscale').value;
+}
+
+function convertImage() {
+    const input = document.getElementById('imageInput');
+    if (!input.files || !input.files[0]) {
+        alert("Please select an image first!");
+        return;
+    }
+
+    const scaleLevel = parseInt(document.getElementById('downscale').value);
+    const file = input.files[0];
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = e => img.src = e.target.result;
+    reader.readAsDataURL(file);
+
+    img.onload = function() {
+        let width = img.width;
+        let height = img.height;
+
+        if (scaleLevel > 0) {
+            const factor = Math.pow(2, scaleLevel);
+            width = Math.max(1, Math.floor(width / factor));
+            height = Math.max(1, Math.floor(height / factor));
+        }
+
+        document.getElementById('resolutionText').innerText =
+            `Resolution: ${width} x ${height}`;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const imageData = ctx.getImageData(0, 0, width, height).data;
+
+        let rleText = '';
+        let prevPixel = null;
+        let count = 0;
+
+        for (let i = 0; i < imageData.length; i += 4) {
+            const r8 = imageData[i];
+            const g8 = imageData[i + 1];
+            const b8 = imageData[i + 2];
+            const a8 = imageData[i + 3];
+
+            if (a8 < 255) {
+                alert("PNGs aren't supported yet in CCIX 1.1");
+                document.getElementById('output').value = '';
+                return;
+            }
+
+            const r = Math.round(r8 / 255 * 5);
+            const g = Math.round(g8 / 255 * 5);
+            const b = Math.round(b8 / 255 * 5);
+
+            const pixel = `${r}${g}${b}`;
+
+            if (pixel === prevPixel) {
+                count++;
+            } else {
+                if (prevPixel !== null) {
+                    rleText += `${count}-${prevPixel}`;
+                }
+                prevPixel = pixel;
+                count = 1;
+            }
+        }
+
+        if (prevPixel !== null) {
+            rleText += `${count}-${prevPixel}`;
+        }
+
+        rleText += ` w${width}`;
+
+        document.getElementById('output').value = rleText;
+    };
+}
+</script>
+
+</body>
+</html>
