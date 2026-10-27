@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Compressed Image to CCIT</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a1a; color: #eee; text-align: center; padding: 20px; }
+  .container { max-width: 800px; margin: auto; background: #2a2a2a; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+  input, button, label { margin: 10px; padding: 10px; font-size: 16px; border-radius: 5px; border: none; }
+  input[type="file"] { background: #333; color: white; }
+  button { background: #3498db; color: white; cursor: pointer; transition: 0.3s; font-weight: bold; }
+  button:hover { background: #2980b9; }
+  button.download-btn { background: #27ae60; }
+  button.download-btn:hover { background: #219150; }
+  textarea { width: 100%; height: 200px; margin-top: 20px; font-family: 'Consolas', monospace; font-size: 14px; background: #111; color: #0f0; border: 1px solid #444; padding: 10px; box-sizing: border-box; }
+  #resolutionText { font-weight: bold; color: #3498db; }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>CCIT 0.1.2 Encoder</h1>
+
+    <input type="file" id="imageInput" accept="image/*"><br>
+
+    <label for="downscale">Downscale: <span id="scaleValue">0</span></label><br>
+    <input type="range" id="downscale" min="0" max="5" value="0" step="1" onchange="updateScaleValue()"><br>
+
+    <button onclick="convertImage()">Convert</button>
+    <button id="dlBtn" class="download-btn" onclick="downloadCCIT()" style="display:none;">Download .ccit</button>
+
+    <p id="resolutionText">Resolution: N/A</p>
+
+    <textarea id="output" placeholder="Compressed CCIT code will appear here..." readonly></textarea>
+</div>
+
+<script>
+let lastGeneratedCode = "";
+
+function updateScaleValue() {
+    document.getElementById('scaleValue').innerText = document.getElementById('downscale').value;
+}
+
+function downloadCCIT() {
+    if (!lastGeneratedCode) return;
+    const blob = new Blob([lastGeneratedCode], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "Image.ccit";
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+}
+
+function convertImage() {
+    const input = document.getElementById('imageInput');
+    if (!input.files || !input.files[0]) {
+        alert("Please select an image first!");
+        return;
+    }
+
+    const scaleLevel = parseInt(document.getElementById('downscale').value);
+    const file = input.files[0];
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = e => img.src = e.target.result;
+    reader.readAsDataURL(file);
+
+    img.onload = function() {
+        let width = img.width;
+        let height = img.height;
+
+        if (scaleLevel > 0) {
+            const factor = Math.pow(2, scaleLevel);
+            width = Math.max(1, Math.floor(width / factor));
+            height = Math.max(1, Math.floor(height / factor));
+        }
+
+        document.getElementById('resolutionText').innerText = `Resolution: ${width} x ${height}`;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const imageData = ctx.getImageData(0, 0, width, height).data;
+
+        let rleText = '';
+        let prevPixel = null;
+        let count = 0;
+
+        for (let i = 0; i < imageData.length; i += 4) {
+            const r8 = imageData[i];
+            const g8 = imageData[i + 1];
+            const b8 = imageData[i + 2];
+            const a8 = imageData[i + 3];
+
+            let pixel;
+            
+            // TRANSPARENCY CHECK: If alpha is less than 128, treat as transparent (_)
+            if (a8 < 128) {
+                pixel = "_";
+            } else {
+                // COLOR SCALE 0-9: Updated from 5 to 9
+                const r = Math.round(r8 / 255 * 9);
+                const g = Math.round(g8 / 255 * 9);
+                const b = Math.round(b8 / 255 * 9);
+                pixel = `${r}${g}${b}`;
+            }
+
+            if (pixel === prevPixel) {
+                count++;
+            } else {
+                if (prevPixel !== null) {
+                    rleText += `${count}-${prevPixel}`;
+                }
+                prevPixel = pixel;
+                count = 1;
+            }
+        }
+
+        if (prevPixel !== null) {
+            rleText += `${count}-${prevPixel}`;
+        }
+
+        // WIDTH AT BOTTOM: As requested
+        rleText += ` w${width}`;
+
+        lastGeneratedCode = rleText;
+        document.getElementById('output').value = rleText;
+        document.getElementById('dlBtn').style.display = "inline-block";
+    };
+}
+</script>
+
+</body>
+</html>
